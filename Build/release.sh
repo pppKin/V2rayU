@@ -167,15 +167,15 @@ function commit() {
 
 function downloadV2ray() {
     echo "正在查询最新版v2ray ..."
-    rm -fr v2ray-macos.zip v2ray-core
-    tag='v4.23.1'
+    rm -fr v2ray-core
+    tag='v1.4.2'
     echo "v2ray-core version: ${tag}"
-    url="https://github.com/v2ray/v2ray-core/releases/download/${tag}/v2ray-macos.zip"
+    url="https://github.com/XTLS/Xray-core/releases/download/v1.4.2/Xray-macos-64.zip"
     echo "正在下载最新版v2ray: ${tag}"
-    curl -Lo v2ray-macos.zip ${url}
+    curl -Lo Xray-macos-64.zip ${url}
 
-    unzip -o v2ray-macos.zip -d v2ray-core
-    rm -fr v2ray-macos.zip
+    unzip -o Xray-macos-64.zip -d v2ray-core
+    \cp v2ray-core/xray v2ray-core/v2ray
 }
 
 function createDmgByAppdmg() {
@@ -212,10 +212,10 @@ function makeDmg() {
     exit;;
     esac
 
-#    rm -fr ${DMG_FINAL} ${V2rayU_RELEASE}
-#    updatePlistVersion
-#    downloadV2ray
-#    build
+    rm -fr ${DMG_FINAL} ${V2rayU_RELEASE}
+    updatePlistVersion
+    downloadV2ray
+    build
     createDmgByAppdmg
 }
 
@@ -224,8 +224,6 @@ function publish() {
 #    pushRelease ${release_note}
     generateAppcast ${release_note}
     commit
-
-    rm -rf "${DMG_TMP}" "${APP_PATH}" "${V2rayU_RELEASE}"
 }
 
 

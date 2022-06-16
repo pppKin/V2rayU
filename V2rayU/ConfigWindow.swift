@@ -59,6 +59,7 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
     @IBOutlet weak var vlessPort: NSTextField!
     @IBOutlet weak var vlessUserId: NSTextField!
     @IBOutlet weak var vlessLevel: NSTextField!
+    @IBOutlet weak var vlessFlow: NSTextField!
 
     // shadowsocks
     @IBOutlet weak var shadowsockAddr: NSTextField!
@@ -151,7 +152,7 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
                 // add server config
         case 0:
             // add
-            _ = V2rayServer.add()
+            V2rayServer.add()
 
             // reload data
             self.serversTableView.reloadData()
@@ -269,15 +270,24 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         if self.vmessSecurity.indexOfSelectedItem >= 0 {
             user.security = self.vmessSecurity.titleOfSelectedItem!
         }
-        v2rayConfig.serverVmess.users[0] = user
+        if v2rayConfig.serverVmess.users.count == 0 {
+            v2rayConfig.serverVmess.users = [user]
+        } else {
+            v2rayConfig.serverVmess.users[0] = user
+        }
 
         // vless
         v2rayConfig.serverVless.address = self.vlessAddr.stringValue
-        v2rayConfig.serverVmess.port = Int(self.vlessPort.intValue)
+        v2rayConfig.serverVless.port = Int(self.vlessPort.intValue)
         var vless_user = V2rayOutboundVLessUser()
         vless_user.id = self.vlessUserId.stringValue
         vless_user.level = Int(self.vlessLevel.intValue)
-        v2rayConfig.serverVless.users[0] = vless_user
+        vless_user.flow = self.vlessFlow.stringValue
+        if v2rayConfig.serverVless.users.count == 0 {
+            v2rayConfig.serverVless.users = [vless_user]
+        } else {
+            v2rayConfig.serverVless.users[0] = vless_user
+        }
 
         // shadowsocks
         v2rayConfig.serverShadowsocks.address = self.shadowsockAddr.stringValue
@@ -293,6 +303,9 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         v2rayConfig.serverTrojan.password = self.trojanPass.stringValue
 
         // socks5
+        if v2rayConfig.serverSocks5.servers.count == 0 {
+            v2rayConfig.serverSocks5.servers = [V2rayOutboundSockServer()]
+        }
         v2rayConfig.serverSocks5.servers[0].address = self.socks5Addr.stringValue
         v2rayConfig.serverSocks5.servers[0].port = Int(self.socks5Port.intValue)
 
@@ -311,11 +324,12 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
             v2rayConfig.streamNetwork = self.switchNetwork.titleOfSelectedItem!
         }
         v2rayConfig.streamTlsAllowInsecure = self.streamAllowSecure.state.rawValue > 0
+        v2rayConfig.streamXtlsAllowInsecure = self.streamAllowSecure.state.rawValue > 0
         if self.streamSecurity.indexOfSelectedItem >= 0 {
             v2rayConfig.streamTlsSecurity = self.streamSecurity.titleOfSelectedItem!
         }
         v2rayConfig.streamTlsServerName = self.streamTlsServerName.stringValue
-
+        v2rayConfig.streamXtlsServerName = self.streamTlsServerName.stringValue
         // tcp
         if self.tcpHeaderType.indexOfSelectedItem >= 0 {
             v2rayConfig.streamTcp.header.type = self.tcpHeaderType.titleOfSelectedItem!
@@ -334,7 +348,12 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         v2rayConfig.streamKcp.congestion = self.kcpCongestion.state.rawValue > 0
 
         // h2
-        v2rayConfig.streamH2.host[0] = self.h2Host.stringValue
+        let h2HostString = self.h2Host.stringValue
+        if h2HostString.count != 0 {
+            v2rayConfig.streamH2.host = [h2HostString]
+        } else {
+            v2rayConfig.streamH2.host = []
+        }
         v2rayConfig.streamH2.path = self.h2Path.stringValue
 
         // ws
@@ -363,7 +382,6 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         self.enableUdp.intValue = v2rayConfig.enableUdp ? 1 : 0
         self.enableMux.intValue = v2rayConfig.enableMux ? 1 : 0
         self.muxConcurrent.intValue = Int32(v2rayConfig.mux)
-        self.version4.intValue = v2rayConfig.isNewVersion ? 1 : 0
         // ========================== base end =======================
 
         // ========================== server start =======================
@@ -383,10 +401,11 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
 
         // vless
         self.vlessAddr.stringValue = v2rayConfig.serverVless.address
-        self.vmessPort.intValue = Int32(v2rayConfig.serverVless.port)
+        self.vlessPort.intValue = Int32(v2rayConfig.serverVless.port)
         if v2rayConfig.serverVless.users.count > 0 {
             let user = v2rayConfig.serverVless.users[0]
             self.vlessLevel.intValue = Int32(user.level)
+            self.vlessFlow.stringValue = user.flow
             self.vlessUserId.stringValue = user.id
         }
 
@@ -399,11 +418,15 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         self.shadowsockMethod.selectItem(withTitle: v2rayConfig.serverShadowsocks.method)
 
         // socks5
-        self.socks5Addr.stringValue = v2rayConfig.serverSocks5.servers[0].address
-        self.socks5Port.stringValue = String(v2rayConfig.serverSocks5.servers[0].port)
-        if let users = v2rayConfig.serverSocks5.servers[0].users, users.count > 0 {
-            self.socks5User.stringValue = users[0].user
-            self.socks5Pass.stringValue = users[0].pass
+        if v2rayConfig.serverSocks5.servers.count > 0 {
+            self.socks5Addr.stringValue = v2rayConfig.serverSocks5.servers[0].address
+            self.socks5Port.stringValue = String(v2rayConfig.serverSocks5.servers[0].port)
+            let users = v2rayConfig.serverSocks5.servers[0].users
+            if users != nil && users!.count > 0 {
+                let user = users![0]
+                self.socks5User.stringValue = user.user
+                self.socks5Pass.stringValue = user.pass
+            }
         }
 
         // trojan
@@ -423,6 +446,10 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         self.streamAllowSecure.intValue = v2rayConfig.streamTlsAllowInsecure ? 1 : 0
         self.streamSecurity.selectItem(withTitle: v2rayConfig.streamTlsSecurity)
         self.streamTlsServerName.stringValue = v2rayConfig.streamTlsServerName
+        if v2rayConfig.streamTlsSecurity == "xtls" {
+            self.streamTlsServerName.stringValue = v2rayConfig.streamXtlsServerName
+            self.streamAllowSecure.intValue = v2rayConfig.streamXtlsAllowInsecure ? 1 : 0
+        }
 
         // tcp
         self.tcpHeaderType.selectItem(withTitle: v2rayConfig.streamTcp.header.type)

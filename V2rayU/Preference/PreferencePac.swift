@@ -10,7 +10,7 @@ import Cocoa
 import Preferences
 import Alamofire
 
-let PACRulesDirPath = AppResourcesPath + "/pac/"
+let PACRulesDirPath = AppHomePath + "/pac/"
 let PACUserRuleFilePath = PACRulesDirPath + "user-rule.txt"
 let PACFilePath = PACRulesDirPath + "proxy.js"
 var PACUrl = "http://127.0.0.1:" + String(HttpServerPacPort) + "/pac/proxy.js"
@@ -50,7 +50,8 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
         var userRuleTxt = """
                           ! Put user rules line by line in this file.
                           ! See https://adblockplus.org/en/filter-cheatsheet
-
+                          ||api.github.com
+                          ||githubusercontent.com
                           """
         if txt != nil {
             if txt!.count > 0 {
@@ -61,6 +62,11 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
             if str?.count ?? 0 > 0 {
                 userRuleTxt = str!
             }
+        }
+        // auto include githubusercontent.com api.github.com
+        if !userRuleTxt.contains("githubusercontent.com") {
+            userRuleTxt.append("\n||api.github.com")
+            userRuleTxt.append("\n||githubusercontent.com")
         }
         userRulesView.string = userRuleTxt
     }
@@ -142,7 +148,7 @@ func GeneratePACFile(rewrite: Bool) -> Bool {
     let sockPort = UserDefaults.get(forKey: .localSockPort) ?? "1080"
 
     // permission
-    _ = shell(launchPath: "/bin/bash", arguments: ["-c", "cd " + AppResourcesPath + " && /bin/chmod -R 755 ./pac"])
+    _ = shell(launchPath: "/bin/bash", arguments: ["-c", "cd " + AppHomePath + " && /bin/chmod -R 755 ./pac"])
 
     // if PACFilePath exist and not need rewrite
     if (!(rewrite || !FileManager.default.fileExists(atPath: PACFilePath))) {
