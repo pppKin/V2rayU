@@ -11,6 +11,25 @@ import Alamofire
 
 var v2rayConfig: V2rayConfig = V2rayConfig()
 
+var configWindow = ConfigWindowController()
+
+func OpenConfigWindow(){
+        if configWindow != nil {
+            // close before
+            
+        } else {
+            // renew
+            configWindow = ConfigWindowController()
+        }
+
+        _ = showDock(state: true)
+        // show window
+        configWindow.showWindow(nil)
+        configWindow.window?.makeKeyAndOrderFront(configWindow.self)
+        // bring to front
+        NSApp.activate(ignoringOtherApps: true)
+}
+
 class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDelegate {
 
     override var windowNibName: String? {
@@ -35,7 +54,6 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
     @IBOutlet weak var enableUdp: NSButton!
     @IBOutlet weak var enableMux: NSButton!
     @IBOutlet weak var muxConcurrent: NSButton!
-    @IBOutlet weak var version4: NSButton!
 
     @IBOutlet weak var switchProtocol: NSPopUpButton!
 
@@ -87,8 +105,12 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
     @IBOutlet weak var wsView: NSView!
     @IBOutlet weak var h2View: NSView!
     @IBOutlet weak var quicView: NSView!
+    @IBOutlet weak var grpcView: NSView!
+    @IBOutlet weak var tlsView: NSView!
+    @IBOutlet weak var realityView: NSView!
 
     @IBOutlet weak var switchNetwork: NSPopUpButton!
+    @IBOutlet weak var switchSecurity: NSPopUpButton!
 
     // kcp setting
     @IBOutlet weak var kcpMtu: NSTextField!
@@ -114,10 +136,18 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
     @IBOutlet weak var quicSecurity: NSPopUpButton!
     @IBOutlet weak var quicHeaderType: NSPopUpButton!
 
-    @IBOutlet weak var streamSecurity: NSPopUpButton!
-    @IBOutlet weak var streamAllowSecure: NSButton!
-    @IBOutlet weak var streamTlsServerName: NSTextField!
+    @IBOutlet weak var grpcServiceName: NSTextField!
+    @IBOutlet weak var grpcUseragent: NSTextField!
+    @IBOutlet weak var grpcMulti: NSButton!
 
+    @IBOutlet weak var streamSecurity: NSPopUpButton!
+    @IBOutlet weak var streamTlsAllowInsecure: NSButton!
+    @IBOutlet weak var streamTlsServerName: NSTextField!
+    @IBOutlet weak var streamRealityServerName: NSTextField!
+    @IBOutlet weak var streamRealityPublicKey: NSTextField!
+    @IBOutlet weak var streamRealityShortId: NSTextField!
+    @IBOutlet weak var streamRealitySpiderX: NSTextField!
+    
     override func awakeFromNib() {
         // set table drag style
         serversTableView.registerForDraggedTypes([NSPasteboard.PasteboardType(rawValue: tableViewDragType)])
@@ -167,6 +197,10 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
             let idx = self.serversTableView.selectedRow
             // remove
             V2rayServer.remove(idx: idx)
+
+            // reload
+            V2rayServer.loadConfig()
+            menuController.showServers()
 
             // selected prev row
             let cnt: Int = V2rayServer.count()
@@ -323,13 +357,19 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         if self.switchNetwork.indexOfSelectedItem >= 0 {
             v2rayConfig.streamNetwork = self.switchNetwork.titleOfSelectedItem!
         }
-        v2rayConfig.streamTlsAllowInsecure = self.streamAllowSecure.state.rawValue > 0
-        v2rayConfig.streamXtlsAllowInsecure = self.streamAllowSecure.state.rawValue > 0
+        // security
         if self.streamSecurity.indexOfSelectedItem >= 0 {
-            v2rayConfig.streamTlsSecurity = self.streamSecurity.titleOfSelectedItem!
+            v2rayConfig.streamSecurity = self.streamSecurity.titleOfSelectedItem!
         }
-        v2rayConfig.streamTlsServerName = self.streamTlsServerName.stringValue
-        v2rayConfig.streamXtlsServerName = self.streamTlsServerName.stringValue
+        // tls
+        v2rayConfig.securityTls.allowInsecure = self.streamTlsAllowInsecure.state.rawValue > 0
+        v2rayConfig.securityTls.serverName = self.streamTlsServerName.stringValue
+        // reality
+        v2rayConfig.securityReality.serverName = self.streamRealityServerName.stringValue
+        v2rayConfig.securityReality.publicKey = self.streamRealityPublicKey.stringValue
+        v2rayConfig.securityReality.shortId = self.streamRealityShortId.stringValue
+        v2rayConfig.securityReality.spiderX = self.streamRealitySpiderX.stringValue
+        
         // tcp
         if self.tcpHeaderType.indexOfSelectedItem >= 0 {
             v2rayConfig.streamTcp.header.type = self.tcpHeaderType.titleOfSelectedItem!
@@ -371,6 +411,12 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         if self.quicSecurity.indexOfSelectedItem >= 0 {
             v2rayConfig.streamQuic.security = self.quicSecurity.titleOfSelectedItem!
         }
+
+        // grpc
+        v2rayConfig.streamGrpc.serviceName = self.grpcServiceName.stringValue
+        v2rayConfig.streamGrpc.user_agent = self.grpcUseragent.stringValue
+        v2rayConfig.streamGrpc.multiMode = self.grpcMulti.state.rawValue > 0
+
         // ========================== stream end =======================
     }
 
@@ -443,14 +489,17 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         self.switchNetwork.selectItem(withTitle: v2rayConfig.streamNetwork)
         self.switchSteamView(network: v2rayConfig.streamNetwork)
 
-        self.streamAllowSecure.intValue = v2rayConfig.streamTlsAllowInsecure ? 1 : 0
-        self.streamSecurity.selectItem(withTitle: v2rayConfig.streamTlsSecurity)
-        self.streamTlsServerName.stringValue = v2rayConfig.streamTlsServerName
-        if v2rayConfig.streamTlsSecurity == "xtls" {
-            self.streamTlsServerName.stringValue = v2rayConfig.streamXtlsServerName
-            self.streamAllowSecure.intValue = v2rayConfig.streamXtlsAllowInsecure ? 1 : 0
-        }
-
+        self.switchSecurityView(securityTitle: v2rayConfig.streamSecurity)
+        self.streamSecurity.selectItem(withTitle: v2rayConfig.streamSecurity)
+        self.streamTlsAllowInsecure.intValue = v2rayConfig.securityTls.allowInsecure ? 1 : 0
+        self.streamTlsServerName.stringValue = v2rayConfig.securityTls.serverName
+        
+        // reality
+        self.streamRealityServerName.stringValue = v2rayConfig.securityReality.serverName
+        self.streamRealityPublicKey.stringValue = v2rayConfig.securityReality.publicKey
+        self.streamRealityShortId.stringValue = v2rayConfig.securityReality.shortId
+        self.streamRealitySpiderX.stringValue = v2rayConfig.securityReality.spiderX
+        
         // tcp
         self.tcpHeaderType.selectItem(withTitle: v2rayConfig.streamTcp.header.type)
 
@@ -479,6 +528,11 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         self.quicKey.stringValue = v2rayConfig.streamQuic.key
         self.quicSecurity.selectItem(withTitle: v2rayConfig.streamQuic.security)
         self.quicHeaderType.selectItem(withTitle: v2rayConfig.streamQuic.header.type)
+
+        // grpc
+        self.grpcServiceName.stringValue = v2rayConfig.streamGrpc.serviceName
+        self.grpcUseragent.stringValue = v2rayConfig.streamGrpc.user_agent
+        self.grpcMulti.intValue = v2rayConfig.streamGrpc.multiMode ? 1 : 0
 
         // ========================== stream end =======================
     }
@@ -540,9 +594,9 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
             let v2rayItemList = V2rayServer.list()
             if curName == v2rayItemList[self.serversTableView.selectedRow].name {
                 if ok {
-                    menuController.startV2rayCore()
+                    V2rayLaunch.startV2rayCore()
                 } else {
-                    menuController.stopV2rayCore()
+                    V2rayLaunch.stopV2rayCore()
                 }
             }
         }
@@ -672,6 +726,9 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
         case "quic":
             self.quicView.isHidden = false
             break;
+        case "grpc":
+            self.grpcView.isHidden = false
+            break;
         default: // vmess
             self.tcpView.isHidden = false
             break
@@ -704,7 +761,24 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
             break
         }
     }
+    
+    func switchSecurityView(securityTitle: String) {
+        print("switchSecurityView",securityTitle)
+        self.tlsView.isHidden = true
+        self.realityView.isHidden = true
+        if securityTitle == "reality" {
+            self.realityView.isHidden = false
+        } else {
+            self.tlsView.isHidden = false
+        }
+    }
 
+    @IBAction func switchSteamSecurity(_ sender: NSPopUpButtonCell) {
+        if let item = switchSecurity.selectedItem {
+            self.switchSecurityView(securityTitle: item.title)
+        }
+    }
+    
     @IBAction func switchSteamNetwork(_ sender: NSPopUpButtonCell) {
         if let item = switchNetwork.selectedItem {
             self.switchSteamView(network: item.title)
@@ -762,16 +836,16 @@ class ConfigWindowController: NSWindowController, NSWindowDelegate, NSTabViewDel
     }
 
     @IBAction func openLogs(_ sender: NSButton) {
-        V2rayLaunch.OpenLogs()
+        OpenLogs()
     }
 
     @IBAction func clearLogs(_ sender: NSButton) {
-        V2rayLaunch.ClearLogs()
+        ClearLogs()
     }
 
     @IBAction func cancel(_ sender: NSButton) {
         // hide dock icon and close all opened windows
-        _ = menuController.showDock(state: false)
+        _ = showDock(state: false)
     }
 
     @IBAction func goAdvanceSetting(_ sender: Any) {

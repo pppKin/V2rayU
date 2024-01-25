@@ -22,7 +22,7 @@ final class PreferenceGeneralViewController: NSViewController, PreferencePane {
     @IBOutlet weak var autoLaunch: NSButtonCell!
     @IBOutlet weak var autoCheckVersion: NSButtonCell!
     @IBOutlet weak var autoUpdateServers: NSButtonCell!
-    @IBOutlet weak var autoSelectFastestServer: NSButtonCell!
+    @IBOutlet weak var autoSelectFastServer: NSButtonCell!
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,7 +39,7 @@ final class PreferenceGeneralViewController: NSViewController, PreferencePane {
             autoUpdateServers.state = .on
         }
         if UserDefaults.getBool(forKey: .autoSelectFastestServer) {
-            autoSelectFastestServer.state = .on
+            autoSelectFastServer.state = .on
         }
     }
 
@@ -56,7 +56,7 @@ final class PreferenceGeneralViewController: NSViewController, PreferencePane {
         UserDefaults.setBool(forKey: .autoUpdateServers, value: sender.state == .on)
     }
 
-    @IBAction func SetAutoSelectFastestServer(_ sender: NSButton) {
+    @IBAction func SetAutoSelectFastServer(_ sender: NSButtonCell) {
         UserDefaults.setBool(forKey: .autoSelectFastestServer, value: sender.state == .on)
     }
 

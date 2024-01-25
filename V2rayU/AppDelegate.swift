@@ -8,32 +8,41 @@
 
 import Cocoa
 import ServiceManagement
+import AppCenter
+import AppCenterAnalytics
+import AppCenterCrashes
+import MASShortcut
+import Preferences
+import Sparkle
 
 let launcherAppIdentifier = "net.yanue.V2rayU.Launcher"
 let appVersion = getAppVersion()
+let V2rayUpdater = SUUpdater()
 
 let NOTIFY_TOGGLE_RUNNING_SHORTCUT = Notification.Name(rawValue: "NOTIFY_TOGGLE_RUNNING_SHORTCUT")
 let NOTIFY_SWITCH_PROXY_MODE_SHORTCUT = Notification.Name(rawValue: "NOTIFY_SWITCH_PROXY_MODE_SHORTCUT")
 
-func SignalHandler(signal: Int32) -> Void {
-    var mstr = String()
-    mstr += "Stack:\n"
-//    mstr = mstr.appendingFormat("slideAdress:0x%0x\r\n", calculate())
-    for symbol in Thread.callStackSymbols {
-        mstr = mstr.appendingFormat("%@\r\n", symbol)
-    }
+extension PreferencePane.Identifier {
+    static let generalTab = Identifier("generalTab")
+    static let advanceTab = Identifier("advanceTab")
+    static let subscribeTab = Identifier("subscribeTab")
+    static let pacTab = Identifier("pacTab")
+    static let routingTab = Identifier("routingTab")
+    static let dnsTab = Identifier("dnsTab")
+    static let aboutTab = Identifier("aboutTab")
 }
 
-func exceptionHandler(exception: NSException) {
-    print(exception)
-    print(exception.callStackSymbols)
-    let stack = exception.callStackReturnAddresses
-    print("Stack trace: \(stack)")
-    print("Error Handling: ", exception)
-    print("Error Handling callStackSymbols: ", exception.callStackSymbols)
-
-    UserDefaults.setArray(forKey: .Exception, value: exception.callStackSymbols)
-}
+let preferencesWindowController = PreferencesWindowController(
+        preferencePanes: [
+            PreferenceGeneralViewController(),
+            PreferenceAdvanceViewController(),
+            PreferenceSubscribeViewController(),
+            PreferencePacViewController(),
+            PreferenceRoutingViewController(),
+            PreferenceDnsViewController(),
+            PreferenceAboutViewController(),
+        ]
+)
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -41,17 +50,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @IBOutlet weak var statusMenu: NSMenu!
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        // ERROR ExceptionHandler
-        if let exception = UserDefaults.getArray(forKey: .Exception) as? [String] {
-            print("Error was occured on previous session! \n", exception, "\n\n-------------------------")
-            var exceptions = ""
-            for e in exception {
-                exceptions = exceptions + e + "\n"
-            }
-            makeToast(message: exceptions)
-            UserDefaults.delArray(forKey: .Exception)
-        }
-        NSSetUncaughtExceptionHandler(exceptionHandler);
+        print("applicationDidFinishLaunching")
+        // appcenter init
+        AppCenter.start(withAppSecret: "d52dd1a1-7a3a-4143-b159-a30434f87713", services:[
+          Analytics.self,
+          Crashes.self
+        ])
 
         // default settings
         self.checkDefault()
@@ -68,20 +72,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // check v2ray core
-        V2rayCore().check()
-
-        // auto check updates
-        if UserDefaults.getBool(forKey: .autoCheckVersion) {
-            menuController.checkV2rayUVersion()
-            // check version
-            V2rayUpdater.checkForUpdatesInBackground()
-        }
-
-        _ = GeneratePACFile(rewrite: true)
-        // start http server for pac
-        V2rayLaunch.startHttpServer()
-
         // wake and sleep
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(onSleepNote(note:)), name: NSWorkspace.willSleepNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(onWakeNote(note:)), name: NSWorkspace.didWakeNotification, object: nil)
@@ -92,42 +82,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let notifyCenter = NotificationCenter.default
         notifyCenter.addObserver(forName: NOTIFY_TOGGLE_RUNNING_SHORTCUT, object: nil, queue: nil, using: {
             notice in
-            ToggleRunning()
+            V2rayLaunch.ToggleRunning()
         })
 
         notifyCenter.addObserver(forName: NOTIFY_SWITCH_PROXY_MODE_SHORTCUT, object: nil, queue: nil, using: {
             notice in
-            SwitchProxyMode()
+            V2rayLaunch.SwitchProxyMode()
         })
 
         // Register global hotkey
         ShortcutsController.bindShortcuts()
+
+        // run at start
+        V2rayLaunch.runAtStart()
+
+        // auto check updates
+        if UserDefaults.getBool(forKey: .autoCheckVersion) {
+            checkV2rayUVersion()
+            // check version
+            V2rayUpdater.checkForUpdatesInBackground()
+        }
     }
 
     func checkDefault() {
-        if UserDefaults.get(forKey: .xRayCoreVersion) == nil {
-            UserDefaults.set(forKey: .xRayCoreVersion, value: V2rayCore.version)
-        }
-        if UserDefaults.get(forKey: .autoCheckVersion) == nil {
-            UserDefaults.setBool(forKey: .autoCheckVersion, value: true)
-        }
         if UserDefaults.get(forKey: .autoUpdateServers) == nil {
             UserDefaults.setBool(forKey: .autoUpdateServers, value: true)
         }
         if UserDefaults.get(forKey: .autoSelectFastestServer) == nil {
-            UserDefaults.setBool(forKey: .autoSelectFastestServer, value: false)
+            UserDefaults.setBool(forKey: .autoSelectFastestServer, value: true)
         }
         if UserDefaults.get(forKey: .autoLaunch) == nil {
             SMLoginItemSetEnabled(launcherAppIdentifier as CFString, true)
             UserDefaults.setBool(forKey: .autoLaunch, value: true)
         }
         if UserDefaults.get(forKey: .runMode) == nil {
-            UserDefaults.set(forKey: .runMode, value: RunMode.pac.rawValue)
+            UserDefaults.set(forKey: .runMode, value: RunMode.global.rawValue)
         }
-        if UserDefaults.get(forKey: .gfwPacFileContent) == nil {
-            let gfwlist = try? String(contentsOfFile: GFWListFilePath, encoding: String.Encoding.utf8)
-            UserDefaults.set(forKey: .gfwPacFileContent, value: gfwlist ?? "")
-        }
+        V2rayServer.loadConfig()
         if V2rayServer.count() == 0 {
             // add default
             V2rayServer.add(remark: "default", json: "", isValid: false)
@@ -148,38 +139,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func onWakeNote(note: NSNotification) {
-        print("onWakeNote")
+        NSLog("onWakeNote")
         // reconnect
         if UserDefaults.getBool(forKey: .v2rayTurnOn) {
-            V2rayLaunch.Stop()
-            V2rayLaunch.Start()
+            NSLog("V2rayLaunch restart")
+            V2rayLaunch.restartV2ray()
         }
-        // check v2ray core
-        V2rayCore().check()
         // auto check updates
         if UserDefaults.getBool(forKey: .autoCheckVersion) {
-            menuController.checkV2rayUVersion()
+            checkV2rayUVersion()
             // check version
             V2rayUpdater.checkForUpdatesInBackground()
         }
         // auto update subscribe servers
         if UserDefaults.getBool(forKey: .autoUpdateServers) {
-            V2raySubSync().sync()
+            V2raySubSync.shared.sync()
         }
         // ping
-//        PingSpeed().pingAll()
+        ping.pingAll()
     }
 
     @objc func onSleepNote(note: NSNotification) {
-        print("onSleepNote")
+        NSLog("onSleepNote")
     }
 
-    func applicationWillTerminate(_ aNotification: Notification) {
+    func applicationShouldTerminate (_ sender: NSApplication) -> NSApplication.TerminateReply {
+        print("applicationShouldTerminate")
         // unregister All shortcut
         MASShortcutMonitor.shared().unregisterAllShortcuts()
         // Insert code here to tear down your application
         V2rayLaunch.Stop()
-        // restore system proxy
-        V2rayLaunch.setSystemProxy(mode: .restore)
+        // off system proxy
+        V2rayLaunch.setSystemProxy(mode: .off)
+        // kill v2ray
+        killSelfV2ray()
+        // webServer stop
+        webServer.stop()
+        // code
+        print("applicationShouldTerminate end")
+        return NSApplication.TerminateReply.terminateNow
+    }
+
+    func applicationWillTerminate(_ aNotification: Notification) {
     }
 }

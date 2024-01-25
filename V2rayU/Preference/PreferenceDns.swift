@@ -56,7 +56,7 @@ final class PreferenceDnsViewController: NSViewController, PreferencePane {
                                 v2rayConfig.dnsJson = str
 
                                 // set current server item and reload v2ray-core
-                                regenerateAllConfig()
+                                V2rayLaunch.restartV2ray()
 
                                 self.dnsJson.string = reStr
                             } else {
@@ -82,7 +82,7 @@ final class PreferenceDnsViewController: NSViewController, PreferencePane {
     }
 
     @IBAction func goViewConfig(_ sender: Any) {
-        let confUrl = PACUrl.replacingOccurrences(of: "pac/proxy.js", with: "config.json")
+        let confUrl = getConfigUrl()
         guard let url = URL(string: confUrl) else {
             return
         }

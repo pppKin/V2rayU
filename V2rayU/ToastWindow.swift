@@ -8,6 +8,27 @@
 
 import Cocoa
 
+var toastWindow =  ToastWindowController()
+
+func makeToast(message: String, displayDuration: Double? = 3) {
+    print("makeToast", message)
+    toastWindow.close()
+    toastWindow = ToastWindowController()
+    toastWindow.message = message
+    toastWindow.showWindow(Any.self)
+    toastWindow.fadeInHud(displayDuration)
+
+    NSApp.activate(ignoringOtherApps: true)
+}
+
+func alertDialog(title: String, message: String) -> Bool {
+    let myPopup = NSAlert()
+    myPopup.messageText = title
+    myPopup.informativeText = message
+    myPopup.alertStyle = .warning
+    return myPopup.runModal() == NSApplication.ModalResponse.alertFirstButtonReturn
+}
+
 class ToastWindowController: NSWindowController {
 
     override var windowNibName: String? {
@@ -30,22 +51,13 @@ class ToastWindowController: NSWindowController {
 
     var timerToFadeOut: Timer? = nil
     var fadingOut: Bool = false
+    
+    var isShow: Bool = false
 
     override func windowDidLoad() {
         super.windowDidLoad()
 
         self.shouldCascadeWindows = false
-
-        // Implement this method to handle any initialization after your window controller's window has been loaded from its nib file.
-        if let win = self.window {
-            win.isOpaque = false
-            win.backgroundColor = .clear
-            win.styleMask = NSWindow.StyleMask.borderless
-            win.hidesOnDeactivate = false
-            win.collectionBehavior = NSWindow.CollectionBehavior.canJoinAllSpaces
-            win.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.floatingWindow)))
-            win.orderFrontRegardless()
-        }
 
         let viewLayer: CALayer = CALayer()
         viewLayer.backgroundColor = CGColor.init(red: 0.05, green: 0.05, blue: 0.05, alpha: kHudAlphaValue)

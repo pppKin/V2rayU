@@ -14,7 +14,8 @@ class V2rayServer: NSObject {
     static var shared = V2rayServer()
 
     static private let defaultV2rayName = "config.default"
-
+    static let lock = NSLock()
+    
     // Initialization
     override init() {
         super.init()
@@ -26,6 +27,11 @@ class V2rayServer: NSObject {
 
     // (init) load v2ray server list from UserDefaults
     static func loadConfig() {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+
         // static reset
         self.v2rayItemList = []
 
@@ -49,6 +55,84 @@ class V2rayServer: NSObject {
             // append
             self.v2rayItemList.append(v2ray)
         }
+        print("loadConfig", self.v2rayItemList.count)
+    }
+    
+    static func all()  -> [V2rayItem] {
+        // static reset
+        var items : [V2rayItem] = []
+
+        // load name list from UserDefaults
+        var list = UserDefaults.getArray(forKey: .v2rayServerList)
+
+        if list == nil {
+            list = ["default"]
+            // store default
+            let model = V2rayItem(name: self.defaultV2rayName, remark: "default", isValid: false)
+            model.store()
+        }
+
+        // load each V2rayItem
+        for item in list! {
+            guard let v2ray = V2rayItem.load(name: item) else {
+                // delete from UserDefaults
+                V2rayItem.remove(name: item)
+                continue
+            }
+            // append
+            items.append(v2ray)
+        }
+        return items
+    }
+    
+    // clear old not valid or exist item
+    static func clearItems() {
+        // remove all
+//        UserDefaults.standard.removePersistentDomain(forName: Bundle.main.bundleIdentifier!)
+        var sub_list: [String] = []
+        if let list = UserDefaults.getArray(forKey: .v2raySubList) {
+            sub_list = list
+        }
+        var svr_list: [String] = []
+        if let list = UserDefaults.getArray(forKey: .v2rayServerList) {
+            svr_list = list
+        }
+        print("clearItems sub_list", sub_list)
+        print("clearItems svr_list", svr_list.count)
+        
+        UserDefaults.standard.dictionaryRepresentation().forEach { (key, val) in
+            // filter config
+            if key.contains("config.") {
+                if let v2ray = V2rayItem.load(name: key) {
+                    // remove v2ray when subscribe is not available
+                    if v2ray.subscribe.count > 0 && !sub_list.contains(v2ray.subscribe) {
+                        print("remove v2ray",key)
+                        V2rayItem.remove(name: key)
+                    } else {
+                        // not in svr_list
+                        if !svr_list.contains(v2ray.name) {
+                            svr_list.append(v2ray.name)
+                        }
+                    }
+                } else {
+                    // delete from UserDefaults
+                    print("remove v2ray",key)
+                    V2rayItem.remove(name: key)
+                }
+            }
+            // filter subscribe
+            if key.contains("subscribe.") {
+                let sub = V2raySubItem.load(name: key)
+                if sub == nil  {
+                    //  delete from UserDefaults
+                    print("remove subscribe",key)
+                    V2rayServer.remove(subscribe: key)
+                }
+            }
+        }
+        print("clearItems svr_list", svr_list.count)
+        // update svr_list
+        UserDefaults.setArray(forKey: .v2rayServerList, value: svr_list)
     }
 
     // get list from v2ray server list
@@ -134,12 +218,18 @@ class V2rayServer: NSObject {
             remark_ = "new server"
         }
 
-        // name is : config. + uuid
-        let name = "config." + UUID().uuidString
+        var v2ray: V2rayItem
+        if let exist = self.existItem(url: url) {
+            v2ray = exist
+            NSLog("server exist: \(remark) - \(url)")
+        } else {
+            // name is : config. + uuid
+            let name = "config." + UUID().uuidString
 
-        let v2ray = V2rayItem(name: name, remark: remark_, isValid: isValid, json: json, url: url, subscribe: subscribe)
-        // save to v2ray UserDefaults
-        v2ray.store()
+            v2ray = V2rayItem(name: name, remark: remark_, isValid: isValid, json: json, url: url, subscribe: subscribe)
+            // save to v2ray UserDefaults
+            v2ray.store()
+        }
 
         // just add to mem
         self.v2rayItemList.append(v2ray)
@@ -176,9 +266,12 @@ class V2rayServer: NSObject {
     // remove v2ray server by subscribe
     static func remove(subscribe: String) {
         let curName = UserDefaults.get(forKey: .v2rayCurrentServerName)
-
+        if subscribe == "" {
+            return
+        }
+        
         for item in V2rayServer.v2rayItemList {
-            print("remove item: ", subscribe, item.subscribe)
+//            print("remove item: ", subscribe, item.subscribe)
             if item.subscribe == subscribe {
                 V2rayItem.remove(name: item.name)
                 // if cuerrent item is default
@@ -190,17 +283,6 @@ class V2rayServer: NSObject {
 
         // update server list UserDefaults
         self.saveItemList()
-
-        // reload
-        V2rayServer.loadConfig()
-
-        // reload config
-        if menuController.configWindow != nil {
-            menuController.configWindow.serversTableView.reloadData()
-        }
-
-        // refresh server
-        menuController.showServers()
     }
 
     // update server list UserDefaults
@@ -224,6 +306,16 @@ class V2rayServer: NSObject {
         return false
     }
 
+    // check url is exists
+    static func existItem(url: String) -> V2rayItem? {
+        for item in self.v2rayItemList {
+            if item.url == url {
+                return item
+            }
+        }
+        return nil
+    }
+    
     // get json file url
     static func getJsonFile() -> String? {
 //        return Bundle.main.url(forResource: "unzip", withExtension: "sh")?.path.replacingOccurrences(of: "/unzip.sh", with: "/config.json")

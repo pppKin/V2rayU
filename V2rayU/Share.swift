@@ -17,7 +17,10 @@ struct VmessShare: Codable {
     var type: String = "none"
     var host: String = ""
     var path: String = ""
-    var tls: String = "none"
+    var tls: String = "tls"
+    var security: String = "auto"
+    var sni: String = ""
+    var fp: String = ""
 }
 
 class ShareUri {
@@ -38,14 +41,6 @@ class ShareUri {
 
         if v2ray.serverProtocol == V2rayProtocolOutbound.vmess.rawValue {
             self.genVmessUri()
-
-            let encoder = JSONEncoder()
-            if let data = try? encoder.encode(self.share) {
-                let uri = String(data: data, encoding: .utf8)!
-                self.uri = "vmess://" + uri.base64Encoded()!
-            } else {
-                self.error = "encode uri error"
-            }
             return
         }
 
@@ -100,6 +95,7 @@ class ShareUri {
         if self.v2ray.serverVmess.users.count > 0 {
             self.share.id = self.v2ray.serverVmess.users[0].id
             self.share.aid = String(self.v2ray.serverVmess.users[0].alterId)
+            self.share.security = self.v2ray.serverVmess.users[0].security // security type
         }
         self.share.net = self.v2ray.streamNetwork
 
@@ -115,7 +111,25 @@ class ShareUri {
             self.share.path = self.v2ray.streamWs.path
         }
 
-        self.share.tls = self.v2ray.streamTlsSecurity
+        if self.v2ray.streamNetwork == "grpc" {
+            self.share.path = self.v2ray.streamGrpc.serviceName
+            if self.v2ray.streamGrpc.multiMode {
+                self.share.type = "multi"
+            }
+        }
+
+        self.share.tls = self.v2ray.streamSecurity
+        self.share.sni = self.v2ray.securityTls.serverName
+        self.share.fp = self.v2ray.securityTls.fingerprint
+        self.share.net = self.v2ray.streamNetwork
+        // todo headerType
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(self.share) {
+            let uri = String(data: data, encoding: .utf8)!
+            self.uri = "vmess://" + uri.base64Encoded()!
+        } else {
+            self.error = "encode uri error"
+        }
     }
 
     // Shadowsocks
@@ -137,6 +151,10 @@ class ShareUri {
         ss.port = self.v2ray.serverTrojan.port
         ss.password = self.v2ray.serverTrojan.password
         ss.remark = self.remark
+        ss.security = "tls"
+        ss.fp = self.v2ray.securityTls.fingerprint
+        ss.flow = self.v2ray.serverTrojan.flow
+
         self.uri = ss.encode()
         self.error = ss.error
     }
@@ -154,8 +172,16 @@ class ShareUri {
         }
         ss.remark = self.remark
 
-        ss.security = self.v2ray.streamTlsSecurity
-        ss.host = self.v2ray.streamXtlsServerName
+        ss.security = self.v2ray.streamSecurity
+        if self.v2ray.streamSecurity == "reality" {
+            ss.pbk = self.v2ray.securityReality.publicKey
+            ss.fp = self.v2ray.securityReality.fingerprint
+            ss.sid = self.v2ray.securityReality.shortId
+            ss.sni = self.v2ray.securityReality.serverName
+        } else {
+            ss.sni = self.v2ray.securityTls.serverName
+            ss.fp = self.v2ray.securityTls.fingerprint
+        }
 
         ss.type = self.v2ray.streamNetwork
 
@@ -169,6 +195,13 @@ class ShareUri {
         if self.v2ray.streamNetwork == "ws" {
             ss.host = self.v2ray.streamWs.headers.host
             ss.path = self.v2ray.streamWs.path
+        }
+
+        if self.v2ray.streamNetwork == "grpc" {
+            self.share.path = self.v2ray.streamGrpc.serviceName
+            if self.v2ray.streamGrpc.multiMode {
+                self.share.type = "multi"
+            }
         }
 
         self.uri = ss.encode()
