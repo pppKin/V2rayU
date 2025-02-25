@@ -7,8 +7,6 @@
 //
 
 import Cocoa
-import Alamofire
-import SwiftyJSON
 import Yams
 
 // ----- v2ray subscribe manager -----
@@ -235,10 +233,9 @@ class V2raySubItem: NSObject, NSCoding {
 let NOTIFY_UPDATE_SubSync = Notification.Name(rawValue: "NOTIFY_UPDATE_SubSync")
 
 class V2raySubSync: NSObject {
-    let lock = NSLock()
     var V2raySubSyncing = false
-    var group = DispatchGroup()
-    
+    let maxConcurrentTasks = 1 // work pool
+
     static var shared = V2raySubSync()
     // Initialization
     override init() {
@@ -254,28 +251,47 @@ class V2raySubSync: NSObject {
         }
         self.V2raySubSyncing = true
         NSLog("V2raySubSync start")
+        
+        let list = V2raySubscription.list()
 
-        let thread = Thread {
-            V2raySubscription.loadConfig()
-            let list = V2raySubscription.list()
-
-            if list.count == 0 {
-                self.logTip(title: "fail: ", uri: "", informativeText: " please add Subscription Url")
-            }
-            // sync queue with DispatchGroup
-            self.group = DispatchGroup()
-            let subQueue = DispatchQueue(label: "subQueue", qos: .background)
-            for item in list {
-                subQueue.sync {
-                    self.group.enter()
-                    self.dlFromUrl(url: item.url, subscribe: item.name)
-                }
-            }
-            self.group.wait()
-            NSLog("V2raySubSync end")
-            self.refreshMenu()
+        if list.count == 0 {
+            self.logTip(title: "fail: ", uri: "", informativeText: " please add Subscription Url")
         }
-        thread.start()
+        // sync queue with DispatchGroup
+        Task {
+            do {
+                try await self.syncTaskGroup(items: list)
+            } catch let error {
+                NSLog("pingTaskGroup error: \(error)")
+            }
+        }
+    }
+    
+    func syncTaskGroup(items: [V2raySubItem]) async throws {
+        let taskChunks = stride(from: 0, to: items.count, by: maxConcurrentTasks).map {
+            Array(items[$0..<min($0 + maxConcurrentTasks, items.count)])
+        }
+        NSLog("syncTaskGroup-start: taskChunks=\(taskChunks.count)")
+        for (i, chunk) in taskChunks.enumerated() {
+            NSLog("syncTaskGroup-start-\(i): count=\(chunk.count)")
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for item in chunk {
+                    group.addTask {
+                        do {
+                            try await self.dlFromUrl(url: item.url, subscribe: item.name)
+                        } catch {
+                            NSLog("dlFromUrl error: \(error)")
+                        }
+                        return
+                    }
+                }
+                // 等待当前批次所有任务完成
+                try await group.waitForAll()
+            }
+            NSLog("syncTaskGroup-end-\(i)")
+        }
+        NSLog("syncTaskGroup-end")
+        self.refreshMenu()
     }
     
     func refreshMenu()  {
@@ -284,49 +300,35 @@ class V2raySubSync: NSObject {
         usleep(useconds_t(1 * second))
         do {
             // refresh server
-            DispatchQueue.main.async {
-                menuController.showServers()
-            }
-            usleep(useconds_t(2 * second))
+            menuController.showServers()
+            // sleep 2
+            sleep(2)
             // do ping
             ping.pingAll()
         }
     }
     
-    func importEnd(url: String, subscribe: String) {
-        self.group.leave()
-    }
-    
-    public func dlFromUrl(url: String, subscribe: String) {
+    public func dlFromUrl(url: String, subscribe: String) async throws {
         logTip(title: "loading from : ", uri: "", informativeText: url + "\n\n")
 
         guard let reqUrl = URL(string: url) else {
             logTip(title: "loading from : ", uri: "", informativeText: "url is not valid: " + url + "\n\n")
-            self.importEnd(url: url, subscribe: subscribe)
             return
         }
         
         // url request with proxy
         let session = URLSession(configuration: getProxyUrlSessionConfigure())
-        let task = session.dataTask(with: URLRequest(url: reqUrl)){(data: Data?, response: URLResponse?, error: Error?) in
-            defer {
-                self.importEnd(url: url, subscribe: subscribe)
-            }
-            if error != nil {
-                self.logTip(title: "loading fail: ", uri: url, informativeText: "error: \(String(describing: error))")
+        do {
+            let (data, _) = try await session.data(for: URLRequest(url: reqUrl))
+            if let outputStr = String(data: data, encoding: String.Encoding.utf8) {
+                self.handle(base64Str: outputStr, subscribe: subscribe, url: url)
             } else {
-                if data != nil {
-                    if let outputStr = String(data: data!, encoding: String.Encoding.utf8) {
-                        self.handle(base64Str: outputStr, subscribe: subscribe, url: url)
-                    } else {
-                        self.logTip(title: "loading fail: ", uri: url, informativeText: "data is nil")
-                    }
-                } else {
-                    self.logTip(title: "loading fail: ", uri: url, informativeText: "data is nil")
-                }
+                self.logTip(title: "loading fail: ", uri: url, informativeText: "data is nil")
             }
+        } catch let error {
+            // failed to write file – bad permissions, bad filename, missing permissions, or more likely it can't be converted to the encoding
+            NSLog("save json file fail: \(error)")
         }
-        task.resume()
     }
 
     func handle(base64Str: String, subscribe: String, url: String) {
@@ -399,10 +401,6 @@ class V2raySubSync: NSObject {
         let list = strTmp.trimmingCharacters(in: .newlines).components(separatedBy: CharacterSet.newlines)
         var count = 0
         for uri in list {
-            count += 1
-            if count > 50 {
-                break // limit 50
-            }
             // import every server
             if (uri.count > 0) {
                 let filterUri =  uri.trimmingCharacters(in: .whitespacesAndNewlines)

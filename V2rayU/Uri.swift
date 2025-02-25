@@ -28,6 +28,8 @@ class VmessUri {
     var alpn: String = ""
     var sni: String = ""
     var fp: String = ""
+    var grpcMode:String = ""
+    var kcpSeed:String = ""
 
     /**
     vmess://base64(security:uuid@host:port)?[urlencode(parameters)]
@@ -145,6 +147,13 @@ class VmessUri {
             case "remark":
                 self.remark = param[1].urlDecoded()
                 break
+            case "serviceName":
+                self.netPath = param[1]
+                break
+            case "mode":
+                self.grpcMode = param[1]
+            case "seed":
+                self.kcpSeed = param[1]
             default:
                 break
             }
@@ -219,6 +228,8 @@ class VmessUri {
         self.fp = json["fp"].stringValue
         // type:伪装类型（none\http\srtp\utp\wechat-video）
         self.type = json["type"].stringValue
+        self.kcpSeed = json["seed"].stringValue
+        self.grpcMode = json["mode"].stringValue
     }
 }
 
@@ -509,16 +520,19 @@ class VlessUri {
     var level: Int = 0
     var flow: String = ""
 
-    var encryption: String = "" // auto,aes-128-gcm,...
+    var encryption: String = "" // none,auto,aes-128-gcm,...
     var security: String = "" // xtls,tls,reality
-
-    var type: String = "" // tcp,http
+    
+    var network: String = "" // network type: tcp,http,kcp,h2,ws,quic,grpc,domainsocket
+    var headerType: String = "" // header type: tcp=["none","http"],quic,kcp=["none", "srtp", "utp", "wechat-video", "dtls", "wireguard"]
     var host: String = ""
     var sni: String = ""
     var path: String = ""
     var fp: String = "" // fingerprint
     var pbk: String = "" // reality public key
     var sid: String = "" // reality shortId
+    var grpcMode:String = ""
+    var kcpSeed:String = ""
 
     // vless://f2a5064a-fabb-43ed-a2b6-8ffeb970df7f@00.com:443?flow=xtls-rprx-splite&encryption=none&security=xtls&sni=aaaaa&type=http&host=00.com&path=%2fvl#vless1
     func encode() -> String {
@@ -531,13 +545,17 @@ class VlessUri {
             URLQueryItem(name: "flow", value: self.flow),
             URLQueryItem(name: "security", value: self.security),
             URLQueryItem(name: "encryption", value: self.encryption),
-            URLQueryItem(name: "type", value: self.type),
+            URLQueryItem(name: "type", value: self.network), // 网络类型: tcp,http,kcp,h2,ws,quic,grpc,domainsocket
             URLQueryItem(name: "host", value: self.host),
             URLQueryItem(name: "path", value: self.path),
             URLQueryItem(name: "sni", value: self.sni),
             URLQueryItem(name: "fp", value: self.fp),
             URLQueryItem(name: "pbk", value: self.pbk),
             URLQueryItem(name: "sid", value: self.sid),
+            URLQueryItem(name: "serviceName", value: self.path),
+            URLQueryItem(name: "headerType", value: self.headerType),
+            URLQueryItem(name: "mode", value: self.grpcMode),
+            URLQueryItem(name: "seed", value: self.kcpSeed)
         ]
 
         return (uri.url?.absoluteString ?? "") + "#" + self.remark
@@ -578,7 +596,7 @@ class VlessUri {
                 self.security = item.value as! String
                 break
             case "type":
-                self.type = item.value as! String
+                self.network = item.value as! String
                 break
             case "host":
                 self.host = item.value as! String
@@ -597,6 +615,18 @@ class VlessUri {
                 break
             case "sid":
                 self.sid = item.value as! String
+                break
+            case "headerType":
+                self.headerType = item.value as! String
+                break
+            case "seed":
+                self.kcpSeed = item.value as! String
+                break
+            case "serviceName":
+                self.path = item.value as! String
+                break
+            case "mode":
+                self.grpcMode = item.value as! String
                 break
             default:
                 break

@@ -6,7 +6,6 @@
 //  Copyright © 2018 yanue. All rights reserved.
 //
 
-import Alamofire
 import Cocoa
 import Preferences
 
@@ -30,7 +29,17 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
 
     @IBOutlet var gfwPacListUrl: NSTextField!
     @IBOutlet var userRulesView: NSTextView!
+    
+    @objc private func configWindowWillClose(notification: Notification) {
+        print("configWindowWillClose-pac",notification)
+        guard let object = notification.object as? NSWindow else {
+            return
+        }
 
+        if object.title == "V2rayU" {
+           showDock(state: false)
+        }
+    }
     override func viewDidLoad() {
         super.viewDidLoad()
         // fix: https://github.com/sindresorhus/Preferences/issues/31
@@ -60,9 +69,9 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
                 // save user rules into file
                 print("user-rules", str)
                 try str.write(toFile: PACUserRuleFilePath, atomically: true, encoding: .utf8)
-
+                
                 UpdatePACFromGFWList(gfwPacListUrl: gfwPacListUrl.stringValue)
-
+                
                 if GeneratePACFile(rewrite: true) {
                     // Popup a user notification
                     tips.stringValue = "PAC has been updated by User Rules."
@@ -90,7 +99,9 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
         }
         
         guard let reqUrl = URL(string: gfwPacListUrl) else {
-            self.tips.stringValue = "Failed to download latest GFW List: url is not valid"
+            DispatchQueue.main.async {
+                self.tips.stringValue = "Failed to download latest GFW List: url is not valid"
+            }
             return
         }
         
@@ -98,14 +109,17 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
         let session = URLSession(configuration: getProxyUrlSessionConfigure())
         let task = session.dataTask(with: URLRequest(url: reqUrl)){(data: Data?, response: URLResponse?, error: Error?) in
             if error != nil {
-                self.tips.stringValue = "Failed to download latest GFW List: \(String(describing: error))"
+                DispatchQueue.main.async {
+                    self.tips.stringValue = "Failed to download latest GFW List: \(String(describing: error))"
+                }
             } else {
                 if data != nil {
                     if let outputStr = String(data: data!, encoding: String.Encoding.utf8) {
                         do {
                             try outputStr.write(toFile: GFWListFilePath, atomically: true, encoding: String.Encoding.utf8)
-                            
-                            self.tips.stringValue = "gfwList has been updated"
+                            DispatchQueue.main.async {
+                                self.tips.stringValue = "gfwList has been updated"
+                            }
                             NSLog("\(self.tips.stringValue)")
 
                             // save to UserDefaults
@@ -113,20 +127,28 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
 
                             if GeneratePACFile(rewrite: true) {
                                 // Popup a user notification
-                                self.tips.stringValue = "PAC has been updated by latest GFW List."
+                                DispatchQueue.main.async {
+                                    self.tips.stringValue = "PAC has been updated by latest GFW List."
+                                }
                                 NSLog("\(self.tips.stringValue)")
                             }
                         } catch {
                             // Popup a user notification
-                            self.tips.stringValue = "Failed to Write latest GFW List."
+                            DispatchQueue.main.async {
+                                self.tips.stringValue = "Failed to Write latest GFW List."
+                            }
                             NSLog("\(self.tips.stringValue)")
                         }
                     } else {
-                        self.tips.stringValue = "Failed to download latest GFW List."
+                        DispatchQueue.main.async {
+                            self.tips.stringValue = "Failed to download latest GFW List."
+                        }
                     }
                 } else {
                     // Popup a user notification
-                    self.tips.stringValue = "Failed to download latest GFW List."
+                    DispatchQueue.main.async {
+                        self.tips.stringValue = "Failed to download latest GFW List."
+                    }
                     self.tryDownloadByShell(gfwPacListUrl: gfwPacListUrl)
                 }
             }
@@ -142,7 +164,9 @@ final class PreferencePacViewController: NSViewController, PreferencePane {
         NSLog("curl result: \(msg)")
         if GeneratePACFile(rewrite: true) {
             // Popup a user notification
-            self.tips.stringValue = "PAC has been updated by latest GFW List."
+            DispatchQueue.main.async {
+                self.tips.stringValue = "PAC has been updated by latest GFW List."
+            }
         }
     }
 }
@@ -176,7 +200,7 @@ func GeneratePACFile(rewrite: Bool) -> Bool {
             }
             let userRuleLines = userRules.components(separatedBy: CharacterSet.newlines)
             var lines = gfwlist.components(separatedBy: CharacterSet.newlines)
-            lines = userRuleLines + lines
+            lines = lines + userRuleLines
 
             // Filter empty and comment lines
             lines = lines.filter({ (s: String) -> Bool in
@@ -245,6 +269,7 @@ func getPacUserRules() -> String {
     ||github.com
     ||chat.openai.com
     ||openai.com
+    ||chatgpt.com
     """
     do {
         let url = URL(fileURLWithPath: PACUserRuleFilePath)
@@ -267,14 +292,14 @@ func getPacUserRules() -> String {
     if !userRuleTxt.contains("api.github.com") {
         userRuleTxt.append("\n||api.github.com")
     }
-    if !userRuleTxt.contains("api.github.com") {
-        userRuleTxt.append("\n||api.github.com")
-    }
     if !userRuleTxt.contains("openai.com") {
         userRuleTxt.append("\n||openai.com")
     }
     if !userRuleTxt.contains("chat.openai.com") {
         userRuleTxt.append("\n||chat.openai.com")
+    }
+    if !userRuleTxt.contains("chatgpt.com") {
+        userRuleTxt.append("\n||chatgpt.com")
     }
     return userRuleTxt
 }

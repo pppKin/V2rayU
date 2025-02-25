@@ -8,16 +8,15 @@
 
 import Cocoa
 import ServiceManagement
+import MASShortcut
+import Preferences
+import FirebaseCore
 import AppCenter
 import AppCenterAnalytics
 import AppCenterCrashes
-import MASShortcut
-import Preferences
-import Sparkle
 
 let launcherAppIdentifier = "net.yanue.V2rayU.Launcher"
 let appVersion = getAppVersion()
-let V2rayUpdater = SUUpdater()
 
 let NOTIFY_TOGGLE_RUNNING_SHORTCUT = Notification.Name(rawValue: "NOTIFY_TOGGLE_RUNNING_SHORTCUT")
 let NOTIFY_SWITCH_PROXY_MODE_SHORTCUT = Notification.Name(rawValue: "NOTIFY_SWITCH_PROXY_MODE_SHORTCUT")
@@ -37,12 +36,15 @@ let preferencesWindowController = PreferencesWindowController(
             PreferenceGeneralViewController(),
             PreferenceAdvanceViewController(),
             PreferenceSubscribeViewController(),
-            PreferencePacViewController(),
             PreferenceRoutingViewController(),
+            PreferencePacViewController(),
             PreferenceDnsViewController(),
             PreferenceAboutViewController(),
         ]
 )
+
+let langStr = Locale.current.languageCode
+let isMainland = langStr == "zh-CN" || langStr == "zh" || langStr == "zh-Hans" || langStr == "zh-Hant"
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -51,12 +53,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         print("applicationDidFinishLaunching")
-        // appcenter init
+        FirebaseApp.configure()
         AppCenter.start(withAppSecret: "d52dd1a1-7a3a-4143-b159-a30434f87713", services:[
           Analytics.self,
           Crashes.self
         ])
-
+        // check installed
+        V2rayLaunch.checkInstall()
+        
         // default settings
         self.checkDefault()
 
@@ -98,9 +102,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // auto check updates
         if UserDefaults.getBool(forKey: .autoCheckVersion) {
-            checkV2rayUVersion()
-            // check version
-            V2rayUpdater.checkForUpdatesInBackground()
+            // 初始化更新控制器
+            V2rayUpdater.checkForUpdates()
         }
     }
 
@@ -119,10 +122,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             UserDefaults.set(forKey: .runMode, value: RunMode.global.rawValue)
         }
         V2rayServer.loadConfig()
-        if V2rayServer.count() == 0 {
-            // add default
-            V2rayServer.add(remark: "default", json: "", isValid: false)
-        }
+        V2rayRoutings.loadConfig()
+        V2raySubscription.loadConfig()
     }
 
     @objc func handleAppleEvent(event: NSAppleEventDescriptor, replyEvent: NSAppleEventDescriptor) {
@@ -147,9 +148,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // auto check updates
         if UserDefaults.getBool(forKey: .autoCheckVersion) {
-            checkV2rayUVersion()
             // check version
-            V2rayUpdater.checkForUpdatesInBackground()
+            V2rayUpdater.checkForUpdates()
         }
         // auto update subscribe servers
         if UserDefaults.getBool(forKey: .autoUpdateServers) {

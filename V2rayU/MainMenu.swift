@@ -8,8 +8,6 @@
 
 import Cocoa
 import ServiceManagement
-import Sparkle
-import Alamofire
 
 let menuController = (NSApplication.shared.delegate as? AppDelegate)?.statusMenu.delegate as! MenuController
 
@@ -19,114 +17,163 @@ class MenuController: NSObject, NSMenuDelegate {
     var statusItemClicked: (() -> Void)?
     let lock = NSLock()
 
-    @IBOutlet weak var pacMode: NSMenuItem!
-    @IBOutlet weak var manualMode: NSMenuItem!
-    @IBOutlet weak var globalMode: NSMenuItem!
-    @IBOutlet weak var statusMenu: NSMenu!
-    @IBOutlet weak var toggleV2rayItem: NSMenuItem!
-    @IBOutlet weak var v2rayStatusItem: NSMenuItem!
-    @IBOutlet weak var serverItems: NSMenuItem!
-    @IBOutlet weak var newVersionItem: NSMenuItem!
+    @IBOutlet var pacMode: NSMenuItem!
+    @IBOutlet var manualMode: NSMenuItem!
+    @IBOutlet var globalMode: NSMenuItem!
+    @IBOutlet var statusMenu: NSMenu!
+    @IBOutlet var toggleV2rayItem: NSMenuItem!
+    @IBOutlet var v2rayStatusItem: NSMenuItem!
+    @IBOutlet var serverItems: NSMenuItem!
+    @IBOutlet var newVersionItem: NSMenuItem!
+    @IBOutlet var routingMenu: NSMenuItem!
 
     // when menu.xib loaded
     override func awakeFromNib() {
         print("awakeFromNib")
+        super.awakeFromNib()
         statusMenu.delegate = self
         statusItem.menu = statusMenu
 
         // hide new version
         newVersionItem.isHidden = true
+        
+        showRouting()
 
         // windowWillClose Notification
         NotificationCenter.default.addObserver(self, selector: #selector(configWindowWillClose(notification:)), name: NSWindow.willCloseNotification, object: nil)
     }
 
     func setStatusOff() {
-        v2rayStatusItem.title = "v2ray-core: Off" + ("  (v" + appVersion + ")")
-        toggleV2rayItem.title = "Turn v2ray-core On"
+        DispatchQueue.main.async {
+            if isMainland {
+                self.v2rayStatusItem.title = "v2ray-core: 已关闭" + ("  (v" + appVersion + ")")
+                self.toggleV2rayItem.title = "开启 v2ray-core"
+            } else {
+                self.v2rayStatusItem.title = "v2ray-core: Off" + ("  (v" + appVersion + ")")
+                self.toggleV2rayItem.title = "Turn v2ray-core On"
+            }
 
-        if let button = statusItem.button {
-            // UI API called on a background thread: -[NSStatusBarButton setImage:]
-            DispatchQueue.main.async {
+            if let button = self.statusItem.button {
                 button.image = NSImage(named: NSImage.Name("IconOff"))
             }
+
+            self.pacMode.state = .off
+            self.globalMode.state = .off
+            self.manualMode.state = .off
+
+            // set off
+            UserDefaults.setBool(forKey: .v2rayTurnOn, value: false)
         }
-
-        self.pacMode.state = .off
-        self.globalMode.state = .off
-        self.manualMode.state = .off
-
-        // set off
-        UserDefaults.setBool(forKey: .v2rayTurnOn, value: false)
     }
 
     func setModeIcon(mode: RunMode) {
-        var iconName = "IconOn"
+        DispatchQueue.main.async {
+            var iconName = "IconOn"
 
-        switch mode {
-        case .global:
-            iconName = "IconOnG"
-            self.pacMode.state = .off
-            self.globalMode.state = .on
-            self.manualMode.state = .off
-        case .manual:
-            iconName = "IconOnM"
-            self.pacMode.state = .off
-            self.globalMode.state = .off
-            self.manualMode.state = .on
-        case .pac:
-            iconName = "IconOnP"
-            self.pacMode.state = .on
-            self.globalMode.state = .off
-            self.manualMode.state = .off
-        default:
-            break
-        }
+            switch mode {
+            case .global:
+                iconName = "IconOnG"
+                self.pacMode.state = .off
+                self.globalMode.state = .on
+                self.manualMode.state = .off
+            case .manual:
+                iconName = "IconOnM"
+                self.pacMode.state = .off
+                self.globalMode.state = .off
+                self.manualMode.state = .on
+            case .pac:
+                iconName = "IconOnP"
+                self.pacMode.state = .on
+                self.globalMode.state = .off
+                self.manualMode.state = .off
+            default:
+                break
+            }
 
-        if let button = statusItem.button {
-            // UI API called on a background thread: -[NSStatusBarButton setImage:]
-            DispatchQueue.main.async {
+            if let button = self.statusItem.button {
                 button.image = NSImage(named: NSImage.Name(iconName))
             }
         }
     }
-    
+
     func setStatusOn(mode: RunMode) {
-        v2rayStatusItem.title = "v2ray-core: On" + ("  (v" + appVersion + ")")
-        toggleV2rayItem.title = "Turn v2ray-core Off"
-        
-        self.setModeIcon(mode: mode)
-        
-        // set on
-        UserDefaults.setBool(forKey: .v2rayTurnOn, value: true)
+        DispatchQueue.main.async {
+            if isMainland {
+                self.v2rayStatusItem.title = "v2ray-core: 已启动" + ("  (v" + appVersion + ")")
+                self.toggleV2rayItem.title = "关闭 v2ray-core"
+            } else {
+                self.v2rayStatusItem.title = "v2ray-core: On" + ("  (v" + appVersion + ")")
+                self.toggleV2rayItem.title = "Turn v2ray-core Off"
+            }
+            self.setModeIcon(mode: mode)
+            UserDefaults.setBool(forKey: .v2rayTurnOn, value: true)
+        }
     }
 
     func setStatusMenuTip(pingTip: String) {
-        do {
-            DispatchQueue.main.async {
-                if self.statusMenu.item(withTag: 1) != nil {
-                    self.statusMenu.item(withTag: 1)!.title = pingTip
-                }
+        DispatchQueue.main.async {
+            if let item = self.statusMenu.item(withTag: 1) {
+                item.title = pingTip
             }
         }
     }
 
     func showServers() {
-        print("showServers")
-        let _subMenus = getServerMenus()
-        lock.lock()
-        do {
+        DispatchQueue.global().async {
+            self.lock.lock()
+            defer { self.lock.unlock() }
+
+            print("showServers")
+            let _subMenus = self.getServerMenus()
+
             DispatchQueue.main.async {
                 self.serverItems.submenu = _subMenus
                 // fix: must be used from main thread only
-                if configWindow != nil && configWindow.serversTableView != nil  {
-                        configWindow.serversTableView.reloadData()
-                }
+                configWindow.reloadData()
             }
         }
-        lock.unlock()
     }
-    
+
+    func showRouting() {
+        DispatchQueue.global().async {
+            let rules = V2rayRoutings.all()
+//            print("showRouting", rules)
+            let sumMenus = NSMenu()
+            // add Routing... menu and click event is goRouting
+            let routingMenuItem = NSMenuItem()
+            if isMainland {
+                routingMenuItem.title = "路由..."
+            } else {
+                routingMenuItem.title = "Routing..."
+            }
+            routingMenuItem.target = self
+            routingMenuItem.action = #selector(self.goRouting(_:))
+            sumMenus.addItem(routingMenuItem)
+            // add separator menu item
+            let separator = NSMenuItem.separator()
+            sumMenus.addItem(separator)
+            // now add all rules
+            let routingRule = UserDefaults.get(forKey: .routingSelectedRule)
+            for rule in rules {
+                let menuItem = NSMenuItem()
+                menuItem.title = rule.remark
+                menuItem.target = self
+                menuItem.action = #selector(self.switchRouting(_:))
+                menuItem.representedObject = rule
+                menuItem.isEnabled = true
+                if rule.name == routingRule {
+                    menuItem.state = NSControl.StateValue.on
+                }
+                sumMenus.addItem(menuItem)
+            }
+//            print("showRouting", sumMenus)
+            // 假设 routingMenu 已经连接并且有一个子菜单
+            DispatchQueue.main.async {
+                self.routingMenu.submenu = sumMenus
+            }
+        }
+    }
+
     func getServerMenus() -> NSMenu {
         // default
         let curSer = UserDefaults.get(forKey: .v2rayCurrentServerName)
@@ -135,14 +182,12 @@ class MenuController: NSObject, NSMenuDelegate {
         var validCount = 0
         var groupMenus: Dictionary = [String: NSMenu]()
         var chooseGroup = ""
-        // reload servers
-        V2rayServer.loadConfig()
         // for each
-        for item in V2rayServer.list() {
-            validCount+=1
-            let menuItem: NSMenuItem = self.buildServerItem(item: item, curSer: curSer)
+        for item in V2rayServer.all() {
+            validCount += 1
+            let menuItem: NSMenuItem = buildServerItem(item: item, curSer: curSer)
             var groupTag: String = item.subscribe
-            if (groupTag.isEmpty) {
+            if groupTag.isEmpty {
                 groupTag = "default"
                 _subMenus.addItem(menuItem)
                 continue
@@ -161,7 +206,7 @@ class MenuController: NSObject, NSMenuDelegate {
         }
 
         // subscribe items
-        for (itemKey,menu) in groupMenus {
+        for (itemKey, menu) in groupMenus {
             if itemKey == "default" {
                 continue
             }
@@ -194,7 +239,7 @@ class MenuController: NSObject, NSMenuDelegate {
     func buildServerItem(item: V2rayItem, curSer: String?) -> NSMenuItem {
         let menuItem: NSMenuItem = NSMenuItem()
         menuItem.title = getMenuServerTitle(item: item)
-        menuItem.action = #selector(self.switchServer(_:))
+        menuItem.action = #selector(switchServer(_:))
         menuItem.representedObject = item
         menuItem.target = self
         menuItem.isEnabled = true
@@ -217,45 +262,56 @@ class MenuController: NSObject, NSMenuDelegate {
     }
 
     @IBAction func openPreferenceGeneral(_ sender: NSMenuItem) {
-        preferencesWindowController.show(preferencePane: .generalTab)
+        DispatchQueue.main.async {
+            preferencesWindowController.show(preferencePane: .generalTab)
+            showDock(state: true)
+        }
     }
 
     @IBAction func openPreferenceSubscribe(_ sender: NSMenuItem) {
-        preferencesWindowController.show(preferencePane: .subscribeTab)
+        DispatchQueue.main.async {
+            preferencesWindowController.show(preferencePane: .subscribeTab)
+            showDock(state: true)
+        }
     }
 
     @IBAction func openPreferencePac(_ sender: NSMenuItem) {
-        preferencesWindowController.show(preferencePane: .pacTab)
+        DispatchQueue.main.async {
+            preferencesWindowController.show(preferencePane: .pacTab)
+            showDock(state: true)
+        }
     }
 
-    // switch server
     @IBAction func switchServer(_ sender: NSMenuItem) {
         guard let obj = sender.representedObject as? V2rayItem else {
             NSLog("switchServer err")
             return
         }
-        // set current
         UserDefaults.set(forKey: .v2rayCurrentServerName, value: obj.name)
-        // restart
         V2rayLaunch.restartV2ray()
     }
 
-    // open config window
+    @IBAction func switchRouting(_ sender: NSMenuItem) {
+        guard let obj = sender.representedObject as? RoutingItem else {
+            NSLog("switchRouting err")
+            return
+        }
+        UserDefaults.set(forKey: .routingSelectedRule, value: obj.name)
+        showRouting()
+        V2rayLaunch.restartV2ray()
+    }
+
     @IBAction func openConfig(_ sender: NSMenuItem) {
         OpenConfigWindow()
     }
 
-    /// When a window was closed this methods takes care of releasing its controller.
-    ///
-    /// - parameter notification: The notification.
     @objc private func configWindowWillClose(notification: Notification) {
         guard let object = notification.object as? NSWindow else {
             return
         }
-
-        // config window title is "V2rayU"
-        if object.title == "V2rayU" {
-            _ = showDock(state: false)
+        let allow_titles = ["V2rayU", "About", "Pac", "Subscription", "General", "Advance", "Dns", "Routing"]
+        if allow_titles.contains(object.title) {
+            showDock(state: false)
         }
     }
 
@@ -276,16 +332,20 @@ class MenuController: NSObject, NSMenuDelegate {
         V2rayLaunch.restartV2ray()
     }
 
-    // MARK: - actions
+    @IBAction func goRouting(_ sender: NSMenuItem) {
+        DispatchQueue.main.async {
+            preferencesWindowController.show(preferencePane: .routingTab)
+            showDock(state: true)
+        }
+    }
+
     @IBAction func switchGlobalMode(_ sender: NSMenuItem) {
         UserDefaults.set(forKey: .runMode, value: RunMode.global.rawValue)
         V2rayLaunch.restartV2ray()
     }
 
     @IBAction func checkForUpdate(_ sender: NSMenuItem) {
-        checkV2rayUVersion()
-        // need set SUFeedURL into plist
-        V2rayUpdater.checkForUpdates(sender)
+        V2rayUpdater.checkForUpdates(showWindow: true)
     }
 
     @IBAction func generateQrcode(_ sender: NSMenuItem) {
@@ -318,7 +378,7 @@ class MenuController: NSObject, NSMenuDelegate {
         NSPasteboard.general.setString(command, forType: NSPasteboard.PasteboardType.string)
 
         // Show a toast notification.
-        noticeTip(title: "Export Command Copied.",  informativeText: "")
+        noticeTip(title: "Export Command Copied.", informativeText: "")
     }
 
     @IBAction func scanQrcode(_ sender: NSMenuItem) {
@@ -373,7 +433,7 @@ func getMenuServerTitle(item: V2rayItem) -> String {
     // littleSpace: 1,.
     if speed.contains(".") || speed.contains("1") {
         let littleSpaceCount = speed.filter({ $0 == "." }).count + speed.filter({ $0 == "1" }).count
-        spaceCnt = totalSpaceCnt - ((speed.count - littleSpaceCount) + Int((speed.count - littleSpaceCount)/2))
+        spaceCnt = totalSpaceCnt - ((speed.count - littleSpaceCount) + Int((speed.count - littleSpaceCount) / 2))
     }
     if speed.contains("-1ms") {
         spaceCnt = 9

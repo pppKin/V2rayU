@@ -81,13 +81,6 @@ let jsSourceFormatConfig =
 
 
 class V2rayConfig: NSObject {
-    // routing rule tag
-    enum RoutingRule: Int {
-        case RoutingRuleGlobal = 0 // Global
-        case RoutingRuleLAN = 1 // Bypassing the LAN Address
-        case RoutingRuleCn = 2 // Bypassing mainland address
-        case RoutingRuleLANAndCn = 3 // Bypassing LAN and mainland address
-    }
 
     var v2ray: V2rayStruct = V2rayStruct()
     var isValid = false
@@ -131,15 +124,6 @@ class V2rayConfig: NSObject {
     var streamSecurity = "none" // none|tls|xtls|reality
     var securityTls = TlsSettings() // tls|xtls
     var securityReality = RealitySettings() // reality
-    
-    var routingDomainStrategy: V2rayRoutingSetting.domainStrategy = .AsIs
-    var routingRule: RoutingRule = .RoutingRuleGlobal
-    let routingProxyDomains = UserDefaults.getArray(forKey: .routingProxyDomains) ?? [];
-    let routingProxyIps = UserDefaults.getArray(forKey: .routingProxyIps) ?? [];
-    let routingDirectDomains = UserDefaults.getArray(forKey: .routingDirectDomains) ?? [];
-    let routingDirectIps = UserDefaults.getArray(forKey: .routingDirectIps) ?? [];
-    let routingBlockDomains = UserDefaults.getArray(forKey: .routingBlockDomains) ?? [];
-    let routingBlockIps = UserDefaults.getArray(forKey: .routingBlockIps) ?? [];
 
     private var foundHttpPort = false
     private var foundSockPort = false
@@ -161,10 +145,6 @@ class V2rayConfig: NSObject {
         self.mux = Int(UserDefaults.get(forKey: .muxConcurrent) ?? "8") ?? 8
 
         self.logLevel = UserDefaults.get(forKey: .v2rayLogLevel) ?? "info"
-
-        // routing
-        self.routingDomainStrategy = V2rayRoutingSetting.domainStrategy(rawValue: UserDefaults.get(forKey: .routingDomainStrategy) ?? "AsIs") ?? .AsIs
-        self.routingRule = RoutingRule(rawValue: Int(UserDefaults.get(forKey: .routingRule) ?? "0") ?? 0) ?? .RoutingRuleGlobal
     }
 
     // combine manual edited data
@@ -292,131 +272,14 @@ class V2rayConfig: NSObject {
         // ------------------------------------- outbound end ---------------------------------------------
 
         // ------------------------------------- routing start --------------------------------------------
-
-        self.routing.settings.domainStrategy = self.routingDomainStrategy
-        var rules: [V2rayRoutingSettingRule] = []
-
-        // rules
-        var ruleProxyDomain, ruleProxyIp, ruleDirectDomain, ruleDirectIp, ruleBlockDomain, ruleBlockIp: V2rayRoutingSettingRule?
-
-        // proxy
-        if self.routingProxyDomains.count > 0 {
-            ruleProxyDomain = getRoutingRule(outTag: "proxy", domain: self.routingProxyDomains, ip: nil, port: nil)
+        let routingRule = UserDefaults.get(forKey: .routingSelectedRule) ?? RoutingRuleGlobal
+        let rule = RoutingItem.load(name: routingRule)
+        if rule != nil{
+            self.v2ray.routing = rule!.parseRule()
         }
-        if self.routingProxyIps.count > 0 {
-            ruleProxyIp = getRoutingRule(outTag: "proxy", domain: nil, ip: self.routingProxyIps, port: nil)
-        }
-
-        // direct
-        if self.routingDirectDomains.count > 0 {
-            ruleDirectDomain = getRoutingRule(outTag: "direct", domain: self.routingDirectDomains, ip: nil, port: nil)
-        }
-        if self.routingDirectIps.count > 0 {
-            ruleDirectIp = getRoutingRule(outTag: "direct", domain: nil, ip: self.routingDirectIps, port: nil)
-        }
-
-        // block
-        if self.routingBlockDomains.count > 0 {
-            ruleBlockDomain = getRoutingRule(outTag: "block", domain: self.routingDirectDomains, ip: nil, port: nil)
-        }
-        if self.routingBlockIps.count > 0 {
-            ruleBlockIp = getRoutingRule(outTag: "block", domain: nil, ip: self.routingBlockIps, port: nil)
-        }
-
-        switch self.routingRule {
-        case .RoutingRuleGlobal:
-            break
-        case .RoutingRuleLAN:
-            if ruleDirectIp == nil {
-                ruleDirectIp = getRoutingRule(outTag: "direct", domain: nil, ip: ["geoip:private"], port: nil)
-            } else {
-                ruleDirectIp?.domain?.append("geoip:private")
-            }
-            if ruleDirectDomain == nil {
-                ruleDirectDomain = getRoutingRule(outTag: "direct", domain: ["localhost"], ip: nil, port: nil)
-            } else {
-                ruleDirectDomain?.domain?.append("localhost")
-            }
-            break
-        case .RoutingRuleCn:
-            if ruleDirectIp == nil {
-                ruleDirectIp = getRoutingRule(outTag: "direct", domain: nil, ip: ["geoip:cn"], port: nil)
-            } else {
-                ruleDirectIp?.domain?.append("geoip:cn")
-            }
-            if ruleDirectDomain == nil {
-                ruleDirectDomain = getRoutingRule(outTag: "direct", domain: ["geosite:cn"], ip: nil, port: nil)
-            } else {
-                ruleDirectDomain?.domain?.append("geosite:cn")
-            }
-            break
-        case .RoutingRuleLANAndCn:
-            if ruleDirectIp == nil {
-                ruleDirectIp = getRoutingRule(outTag: "direct", domain: nil, ip: ["geoip:cn","geoip:private"], port: nil)
-            } else {
-                ruleDirectIp?.ip?.append("geoip:private")
-                ruleDirectIp?.ip?.append("geoip:cn")
-            }
-            if ruleDirectDomain == nil {
-                ruleDirectDomain = getRoutingRule(outTag: "direct", domain: ["geosite:cn","localhost"], ip: nil, port: nil)
-            } else {
-                ruleDirectDomain?.domain?.append("geosite:cn")
-                ruleDirectDomain?.domain?.append("localhost")
-            }
-            break
-        }
-        // 先block
-        if ruleBlockDomain != nil {
-            ruleBlockDomain?.ip = nil
-            rules.append(ruleBlockDomain!)
-        }
-        if ruleBlockIp != nil {
-            ruleBlockIp?.domain = nil
-            rules.append(ruleBlockIp!)
-        }
-        // 然后直连
-        if ruleDirectDomain != nil {
-            ruleDirectDomain!.ip = nil
-            rules.append(ruleDirectDomain!)
-        }
-        if ruleDirectIp != nil {
-            ruleDirectIp!.domain = nil
-            rules.append(ruleDirectIp!)
-        }
-        // 最后代理
-        if ruleProxyDomain != nil {
-            ruleProxyDomain?.ip = nil
-            rules.append(ruleProxyDomain!)
-        }
-        if ruleProxyIp != nil {
-            ruleProxyIp?.domain = nil
-            rules.append(ruleProxyIp!)
-        }
-        
-        // 默认按端口全部代理
-        var ruleProxyPort = getRoutingRule(outTag: "proxy", domain: nil, ip: nil, port: "0-65535")
-        ruleProxyPort.outboundTag = "proxy"
-        ruleProxyPort.type = "field"
-        ruleProxyPort.port = "0-65535"
-//        rules.append(ruleProxyPort)
-
-        // 代理规则
-        self.routing.settings.rules = rules
-        // set v2ray routing
-        self.v2ray.routing = self.routing
         // ------------------------------------- routing end ----------------------------------------------
     }
 
-    func getRoutingRule(outTag: String, domain:[String]?, ip: [String]?, port:String?) -> V2rayRoutingSettingRule {
-        var rule = V2rayRoutingSettingRule()
-        rule.outboundTag = outTag
-        rule.type = "field"
-        rule.domain = domain
-        rule.ip = ip
-        rule.port = port
-        return rule
-    }
-    
     func checkManualValid() {
         defer {
             if self.error != "" {
@@ -907,6 +770,9 @@ class V2rayConfig: NSObject {
                         user.id = val["id"].stringValue
                         user.flow = val["flow"].stringValue
                         user.encryption = val["encryption"].stringValue
+                        if user.encryption.isEmpty {
+                            user.encryption = "none"
+                        }
                         user.level = val["level"].intValue
                         users.append(user)
                     }
@@ -1056,6 +922,7 @@ class V2rayConfig: NSObject {
 
             if transport.kcpSettings != nil {
                 self.streamKcp = transport.kcpSettings!
+                print("self.streamKcp",self.streamKcp)
             }
 
             if transport.wsSettings != nil {
@@ -1234,6 +1101,7 @@ class V2rayConfig: NSObject {
             kcpSettings.congestion = streamJson["kcpSettings"]["congestion"].boolValue
             kcpSettings.readBufferSize = streamJson["kcpSettings"]["readBufferSize"].intValue
             kcpSettings.writeBufferSize = streamJson["kcpSettings"]["writeBufferSize"].intValue
+            kcpSettings.seed = streamJson["kcpSettings"]["seed"].stringValue
             // "none"
             if KcpSettingsHeaderType.firstIndex(of: streamJson["kcpSettings"]["header"]["type"].stringValue) != nil {
                 kcpSettings.header.type = streamJson["kcpSettings"]["header"]["type"].stringValue

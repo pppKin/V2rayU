@@ -5,4 +5,8 @@
   Created by yanue on 2019/7/17.
   Copyright © 2019 yanue. All rights reserved.
 */
-// Localizable App Name是App在英语环境环境下显示的名称
+"InstallAlertTitle" = "V2rayU 需要使用管理员权限安装 V2rayUTool 到 ~/.V2rayU/V2rayUTool";
+"InstallV2rayUToolFailed" = "安装 V2rayUTool 失败"
+"HttpPortInUseMessage" = "http端口 %@ 已被使用, 请更换";
+"Install" = "Install"
+"Quit" = "Quit"

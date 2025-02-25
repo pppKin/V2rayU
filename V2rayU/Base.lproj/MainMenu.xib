@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="21225" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="32700.99.1234" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
     <dependencies>
         <deployment identifier="macosx"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="21225"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22690"/>
     </dependencies>
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="NSApplication">
@@ -24,6 +24,7 @@
                 <outlet property="manualMode" destination="hTu-27-5OL" id="lHt-aQ-ZNU"/>
                 <outlet property="newVersionItem" destination="SdL-DD-qZe" id="WXr-Gw-0HS"/>
                 <outlet property="pacMode" destination="NrZ-oB-7yd" id="d3C-wO-jAI"/>
+                <outlet property="routingMenu" destination="VNg-as-9we" id="NO1-L3-jsN"/>
                 <outlet property="serverItems" destination="cio-ej-HL5" id="0Z8-41-eCi"/>
                 <outlet property="statusMenu" destination="9n3-TW-9ur" id="Hgg-sa-fM8"/>
                 <outlet property="toggleV2rayItem" destination="SML-EF-rdT" id="am7-ue-GN3"/>
@@ -85,6 +86,14 @@
                     </connections>
                 </menuItem>
                 <menuItem isSeparatorItem="YES" id="EF9-7H-2Xy"/>
+                <menuItem title="Routing" id="VNg-as-9we" userLabel="Routing">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="Routing" id="ykF-uD-Nb1"/>
+                    <connections>
+                        <action selector="switchRouting:" target="hcZ-V7-Dui" id="cPc-yB-1qO"/>
+                    </connections>
+                </menuItem>
+                <menuItem isSeparatorItem="YES" id="vxZ-8S-14f"/>
                 <menuItem title="Servers" id="cio-ej-HL5" userLabel="ServerItems">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Servers" id="NCx-DY-Hm4"/>
